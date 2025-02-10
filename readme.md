@@ -1,120 +1,146 @@
-# Face Emotion and Age Detection
+# Face Emotion & Age Detection System
 
-![Face Emotion and Age Detection]
-
-This project uses computer vision techniques to detect emotions and estimate the age of individuals in real-time video streams. It combines rule-based emotion detection using facial landmarks with a pre-trained deep learning model for age estimation.
-
----
-
-## Table of Contents
-1. [Project Overview](#project-overview)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Usage](#usage)
-5. [Troubleshooting](#troubleshooting)
-6. [Acknowledgments](#acknowledgments)
-
----
-
-## Project Overview
-
-This application detects emotions (e.g., Happy, Sad, Angry, etc.) and estimates the age of faces captured by a webcam. It uses:
-- **OpenCV**: For face detection and video capture.
-- **dlib**: For facial landmark detection.
-- **Pre-trained Age Model**: A Caffe-based model for age estimation.
-
-The emotion detection is rule-based, leveraging geometric relationships between facial landmarks, while the age estimation uses a weighted average approach to refine predictions.
+## Overview
+This application detects faces in real-time using a webcam, recognizes known faces, estimates emotions and ages, and generates detailed reports (CSV and PDF) based on the detection logs. It uses advanced libraries like `face_recognition`, `dlib`, and `OpenCV` for face detection, emotion recognition, and age estimation.
 
 ---
 
 ## Features
+1. **Real-Time Face Detection**:
+   - Detects faces using Haar Cascade and `face_recognition`.
+   - Draws bounding boxes around detected faces.
 
-- **Real-Time Emotion Detection**:
-  - Detects emotions such as "Happy," "Sad," "Angry," "Surprise," "Neutral," and "Sleepy."
-  - Uses facial landmarks to infer emotions based on geometric relationships.
+2. **Emotion Recognition**:
+   - Recognizes emotions such as happy, sad, angry, neutral, etc., using facial landmarks.
 
-- **Age Estimation**:
-  - Estimates age ranges (e.g., `(25-32)`) and provides a single estimated age value (e.g., `28`).
-  - Includes bias correction to improve accuracy for adult faces.
+3. **Age Estimation**:
+   - Estimates the age of detected faces using a pre-trained Caffe model.
 
-- **Lightweight and No Deep Learning for Emotions**:
-  - Avoids TensorFlow or PyTorch for emotion detection, relying on simple rule-based logic.
+4. **Known Face Recognition**:
+   - Recognizes known faces from the `known_faces` directory.
+   - Automatically saves new faces and prompts for the user's name.
 
-- **Customizable**:
-  - Easily adjust thresholds for emotion detection and age estimation.
+5. **Log Generation**:
+   - Logs all detections (name, emotion, age) into a file (`logs/detection_log.txt`).
+
+6. **Report Generation**:
+   - Generates a **CSV report** summarizing emotions and ages for each user.
+   - Generates a **PDF report** with a clean and professional design.
+
+7. **Error Handling**:
+   - Handles cases where face encoding fails or log files are missing.
 
 ---
 
 ## Installation
 
 ### Prerequisites
-- Python 3.7 or higher
-- OpenCV (`cv2`)
-- dlib
-- NumPy
+- Python 3.8 or higher
+- A webcam for real-time detection
 
-### Steps to Install Dependencies
+### Dependencies
+Install the required libraries using the following command:
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/wprashed/age-and-emotion
-   cd face-emotion-age-detection
-   ```
+```bash
+pip install opencv-python dlib face_recognition pandas fpdf
+```
 
-2. Install required libraries:
-   ```bash
-   pip install opencv-python opencv-contrib-python dlib numpy
-   ```
+### Pre-trained Models
+Download the following pre-trained models and place them in the project directory:
+1. **Shape Predictor Model**: [shape_predictor_68_face_landmarks.dat](http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2)
+2. **Age Estimation Model**:
+   - `deploy_age.prototxt`
+   - `age_net.caffemodel`
 
-3. Download Pre-trained Models:
-   - **Facial Landmark Predictor**:
-     - Download `shape_predictor_68_face_landmarks.dat` from [here](http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2).
-     - Extract and place it in the project directory.
-   - **Age Estimation Model**:
-     - Download `deploy_age.prototxt` and `age_net.caffemodel` from [here](https://github.com/spmallick/learnopencv/tree/master/AgeGender/CaffeModels).
-     - Place these files in the project directory.
+Place these files in the root directory of the project.
+
+---
+
+## Directory Structure
+The project has the following structure:
+```
+project/
+│
+├── known_faces/       # Directory to store known face images
+│   ├── Alice/
+│   │   ├── Alice_20231005_143005.jpg
+│   ├── Bob/
+│   │   ├── Bob_20231005_143200.jpg
+│
+├── logs/              # Directory to store logs and reports
+│   ├── detection_log.txt
+│   ├── report.csv
+│   ├── report.pdf
+│
+├── shape_predictor_68_face_landmarks.dat
+├── deploy_age.prototxt
+├── age_net.caffemodel
+├── app.py             # Main script
+└── README.md          # This file
+```
 
 ---
 
 ## Usage
 
-1. Run the script:
+### Running the Application
+1. Start the application by running the following command:
    ```bash
    python app.py
    ```
 
-2. The webcam feed will open, displaying:
-   - A rectangle around each detected face.
-   - The detected emotion (e.g., "Happy") above the face.
-   - The estimated age (e.g., `(25-32) (Est: 28)`) below the emotion.
+2. The webcam will open, and the system will start detecting faces in real-time.
 
-3. Press `q` to quit the application.
+3. **Key Commands**:
+   - Press `q` to quit the application.
+   - Press `r` to generate a CSV and PDF report.
+
+### Adding Known Faces
+- Place images of known faces in the `known_faces` directory under subfolders named after the person (e.g., `known_faces/Alice/`).
+- Restart the application to load the new faces.
+
+---
+
+## Report Generation
+When you press `r`, the system generates two reports:
+1. **CSV Report**:
+   - File: `logs/report.csv`
+   - Contains details about detected emotions, counts, average age, and all recorded ages for each user.
+
+2. **PDF Report**:
+   - File: `logs/report.pdf`
+   - A visually appealing summary of emotions and ages for each user.
+
+---
+
+## Example Log Entry
+The log file (`logs/detection_log.txt`) contains entries like this:
+```
+2023-10-05 14:30:00 - Name: Alice, Emotion: happy, Age: (25-32) (Est: 28)
+2023-10-05 14:30:01 - Name: Bob, Emotion: angry, Age: (38-43) (Est: 40)
+```
 
 ---
 
 ## Troubleshooting
 
-### Common Issues and Fixes
+### 1. Missing Log File
+If the log file (`logs/detection_log.txt`) is missing:
+- Ensure the `logs` directory exists. If not, create it manually:
+  ```bash
+  mkdir logs
+  ```
 
-1. **Camera Not Opening**:
-   - Ensure your webcam is connected and accessible.
-   - Check permissions in **System Preferences > Privacy & Security > Camera**.
+### 2. No Faces Detected
+- Ensure proper lighting and that the face is within the camera's view.
+- Adjust the `scaleFactor` and `minNeighbors` parameters in the `detectMultiScale` function if necessary.
 
-2. **Error Loading dlib Shape Predictor**:
-   - Verify that `shape_predictor_68_face_landmarks.dat` is downloaded and placed in the correct directory.
-
-3. **Incorrect Age Estimates**:
-   - Adjust the bias correction multiplier in the `estimate_age` function.
-   - Ensure proper lighting and camera quality for better results.
-
-4. **Incorrect Emotions**:
-   - Fine-tune the thresholds in the `detect_emotion` function.
-   - Test with static images to verify the logic.
+### 3. Errors During Installation
+- If you encounter issues installing `dlib`, ensure you have the required build tools installed:
+  - On Windows: Install [CMake](https://cmake.org/) and Visual Studio Build Tools.
+  - On Linux: Install `cmake` and `build-essential`.
 
 ---
 
-## Acknowledgments
-
-- **OpenCV**: For providing tools for face detection and video processing.
-- **dlib**: For facial landmark detection.
-- **Caffe Age Model**: For age estimation, sourced from [LearnOpenCV](https://github.com/spmallick/learnopencv).
+## Contributing
+Contributions are welcome! If you find any bugs or want to add new features, feel free to submit a pull request.

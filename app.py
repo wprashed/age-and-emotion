@@ -12,29 +12,74 @@ except Exception as e:
     print("Please download the file from http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2 and extract it.")
     exit()
 
+# Load pre-trained age model
+age_net = cv2.dnn.readNetFromCaffe("deploy_age.prototxt", "age_net.caffemodel")
+
+# Define age labels
+AGE_LABELS = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+
 def detect_emotion(landmarks):
     """
     Rule-based emotion detection using facial landmarks.
     """
-    # Extract key points for mouth and eyebrows
+    # Extract key points for different facial features
     mouth = landmarks[48:68]  # Mouth landmarks
     left_eyebrow = landmarks[17:22]  # Left eyebrow landmarks
     right_eyebrow = landmarks[22:27]  # Right eyebrow landmarks
+    left_eye = landmarks[36:42]  # Left eye landmarks
+    right_eye = landmarks[42:48]  # Right eye landmarks
 
-    # Calculate distances between key points
-    mouth_height = abs(mouth[3][1] - mouth[9][1])  # Vertical distance of the mouth
+    # Calculate distances and ratios
+    mouth_width = abs(mouth[6][0] - mouth[0][0])
+    mouth_height = abs(mouth[3][1] - mouth[9][1])
+    mouth_ratio = mouth_height / mouth_width
+
     left_eyebrow_height = abs(left_eyebrow[0][1] - left_eyebrow[-1][1])
     right_eyebrow_height = abs(right_eyebrow[0][1] - right_eyebrow[-1][1])
+    avg_eyebrow_height = (left_eyebrow_height + right_eyebrow_height) / 2
 
-    print(f"Mouth Height: {mouth_height}, Left Eyebrow Height: {left_eyebrow_height}, Right Eyebrow Height: {right_eyebrow_height}")
+    left_eye_height = abs(left_eye[1][1] - left_eye[5][1])
+    right_eye_height = abs(right_eye[1][1] - right_eye[5][1])
+    avg_eye_height = (left_eye_height + right_eye_height) / 2
 
-    # Simplified rules for emotion detection
-    if mouth_height > 15:  # Mouth open wide
+    # Calculate eyebrow slope
+    left_eyebrow_slope = (left_eyebrow[-1][1] - left_eyebrow[0][1]) / (left_eyebrow[-1][0] - left_eyebrow[0][0])
+    right_eyebrow_slope = (right_eyebrow[-1][1] - right_eyebrow[0][1]) / (right_eyebrow[-1][0] - right_eyebrow[0][0])
+    avg_eyebrow_slope = (left_eyebrow_slope + right_eyebrow_slope) / 2
+
+    # Print debug information
+    print(f"Mouth Ratio: {mouth_ratio:.2f}, Avg Eyebrow Height: {avg_eyebrow_height:.2f}")
+    print(f"Avg Eye Height: {avg_eye_height:.2f}, Avg Eyebrow Slope: {avg_eyebrow_slope:.2f}")
+
+    # Refined rules for emotion detection
+    if mouth_ratio > 0.3 and avg_eyebrow_height < 10:
         return "Happy"
-    elif left_eyebrow_height > 10 or right_eyebrow_height > 10:  # Eyebrows raised
+    elif avg_eyebrow_height > 15 and avg_eye_height > 10:
         return "Surprise"
-    else:
+    elif mouth_ratio < 0.1 and avg_eyebrow_slope < -0.1:
+        return "Sad"
+    elif avg_eyebrow_height > 12 and avg_eyebrow_slope > 0.1 and mouth_ratio < 0.2:
+        return "Angry"
+    elif mouth_ratio > 0.2 and avg_eyebrow_height > 12:
+        return "Excited"
+    elif avg_eye_height < 5:
+        return "Sleepy"
+    elif mouth_ratio < 0.15 and abs(avg_eyebrow_slope) < 0.05:
         return "Neutral"
+    elif mouth_ratio > 0.15 and mouth_ratio < 0.3 and avg_eyebrow_height < 12:
+        return "Content"
+    else:
+        return "Unknown"
+
+def estimate_age(face):
+    """
+    Estimate age using the pre-trained age model.
+    """
+    blob = cv2.dnn.blobFromImage(face, scalefactor=1.0, size=(227, 227), mean=(78.4263377603, 87.7689143744, 114.895847746), swapRB=False)
+    age_net.setInput(blob)
+    age_preds = age_net.forward()
+    age = AGE_LABELS[age_preds[0].argmax()]
+    return age
 
 # Start video capture
 cap = cv2.VideoCapture(0)
@@ -76,11 +121,16 @@ while True:
             emotion = "Unknown"
             print(f"Error detecting landmarks: {e}")
 
-        # Display the detected emotion
-        cv2.putText(frame, f"Emotion: {emotion}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        # Estimate age
+        face_roi = frame[y:y+h, x:x+w]
+        age = estimate_age(face_roi)
+
+        # Display the detected emotion and age
+        cv2.putText(frame, f"Emotion: {emotion}", (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(frame, f"Age: {age}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     # Display the frame
-    cv2.imshow('Face Emotion Detection', frame)
+    cv2.imshow('Face Emotion & Age Detection', frame)
 
     # Exit on 'q' key press
     if cv2.waitKey(1) & 0xFF == ord('q'):

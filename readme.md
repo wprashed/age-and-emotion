@@ -1,6 +1,6 @@
 # Face Emotion and Age Detection
 
-![Face Emotion and Age Detection](https://via.placeholder.com/800x400?text=Face+Emotion+and+Age+Detection)
+![Face Emotion and Age Detection]
 
 This project uses computer vision techniques to detect emotions and estimate the age of individuals in real-time video streams. It combines rule-based emotion detection using facial landmarks with a pre-trained deep learning model for age estimation.
 
@@ -57,7 +57,7 @@ The emotion detection is rule-based, leveraging geometric relationships between 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/face-emotion-age-detection.git
+   git clone https://github.com/wprashed/age-and-emotion
    cd face-emotion-age-detection
    ```
 

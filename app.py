@@ -81,7 +81,7 @@ def detect_emotion(landmarks, face_width, face_height):
     avg_eye_height = (left_eye_height + right_eye_height) / 2
 
     # Add better rules for emotion detection
-    if mouth_ratio > 0.35:  # Wide-open mouth
+    if mouth_ratio > 0.35 and avg_eyebrow_height < 0.1:  # Wide-open mouth and neutral eyebrows
         return "happy"
     elif avg_eyebrow_height > 0.18 and mouth_ratio < 0.05:  # Raised eyebrows
         return "surprise"
@@ -305,49 +305,50 @@ while True:
         # Draw rectangle around the face
         cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
-        # Recognize the face
-        face_location = (y, x+w, y+h, x)
-        face_encoding = face_recognition.face_encodings(frame, [face_location])
-
-        if not face_encoding:
-            logging.warning("Could not encode face. Skipping recognition.")
-            continue
-
-        face_encoding = face_encoding[0]
-
-        # Compare faces with a tolerance threshold
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.5)
-        name = "Unknown"
-
-        if True in matches:
-            match_index = matches.index(True)
-            name = known_face_names[match_index]
-        else:
-            # New face detected
-            logging.info("New face detected. Saving image and asking for name.")
-            name = save_new_face(frame, face_location)
-
-        # Detect facial landmarks using dlib
         try:
+            # Recognize the face
+            face_location = (y, x+w, y+h, x)
+            face_encoding = face_recognition.face_encodings(frame, [face_location])
+
+            if not face_encoding:
+                logging.warning("Could not encode face. Skipping recognition.")
+                continue
+
+            face_encoding = face_encoding[0]
+
+            # Compare faces with a tolerance threshold
+            matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.5)
+            name = "Unknown"
+
+            if True in matches:
+                match_index = matches.index(True)
+                name = known_face_names[match_index]
+            else:
+                # New face detected
+                logging.info("New face detected. Saving image and asking for name.")
+                name = save_new_face(frame, face_location)
+
+            # Detect facial landmarks using dlib
             rect = dlib.rectangle(x, y, x+w, y+h)
             landmarks = predictor(gray, rect)
             landmarks = [(landmarks.part(i).x, landmarks.part(i).y) for i in range(68)]
             emotion = detect_emotion(landmarks, w, h)  # Pass face width and height
+
+            # Estimate age
+            face_roi = frame[y:y+h, x:x+w]
+            age = estimate_age(face_roi)
+
+            # Log the detection
+            logging.info(f"Name: {name}, Emotion: {emotion}, Age: {age}")
+
+            # Display the detected information
+            cv2.putText(frame, f"Name: {name}", (x, y-70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            cv2.putText(frame, f"Emotion: {emotion}", (x, y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            cv2.putText(frame, f"Age: {age}", (x, y-20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+
         except Exception as e:
-            emotion = "unknown"
-            logging.error(f"Error detecting landmarks: {e}")
-
-        # Estimate age
-        face_roi = frame[y:y+h, x:x+w]
-        age = estimate_age(face_roi)
-
-        # Log the detection
-        logging.info(f"Name: {name}, Emotion: {emotion}, Age: {age}")
-
-        # Display the detected information
-        cv2.putText(frame, f"Name: {name}", (x, y-70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.putText(frame, f"Emotion: {emotion}", (x, y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.putText(frame, f"Age: {age}", (x, y-20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+            logging.error(f"Error processing face: {e}")
+            continue
 
     # Display the frame
     cv2.imshow('Face Emotion & Age Detection', frame)
@@ -356,7 +357,7 @@ while True:
     key = cv2.waitKey(1) & 0xFF
     if key == ord('q'):
         break
-    elif key == ord('r'):  # Press 'r' to generate a report
+    elif key == ord('r'):  # Press 'r' to
         generate_report()
 
 # Release resources

@@ -22,54 +22,34 @@ def detect_emotion(landmarks):
     """
     Rule-based emotion detection using facial landmarks.
     """
-    # Extract key points for different facial features
+    # Extract key points for mouth, eyebrows, and eyes
     mouth = landmarks[48:68]  # Mouth landmarks
-    left_eyebrow = landmarks[17:22]  # Left eyebrow landmarks
-    right_eyebrow = landmarks[22:27]  # Right eyebrow landmarks
     left_eye = landmarks[36:42]  # Left eye landmarks
     right_eye = landmarks[42:48]  # Right eye landmarks
+    left_eyebrow = landmarks[17:22]  # Left eyebrow landmarks
+    right_eyebrow = landmarks[22:27]  # Right eyebrow landmarks
 
-    # Calculate distances and ratios
-    mouth_width = abs(mouth[6][0] - mouth[0][0])
-    mouth_height = abs(mouth[3][1] - mouth[9][1])
-    mouth_ratio = mouth_height / mouth_width
-
+    # Calculate distances between key points
+    mouth_height = abs(mouth[3][1] - mouth[9][1])  # Vertical distance of the mouth
     left_eyebrow_height = abs(left_eyebrow[0][1] - left_eyebrow[-1][1])
     right_eyebrow_height = abs(right_eyebrow[0][1] - right_eyebrow[-1][1])
-    avg_eyebrow_height = (left_eyebrow_height + right_eyebrow_height) / 2
+    eyebrow_distance = abs(left_eyebrow[-1][0] - right_eyebrow[0][0])  # Horizontal distance between eyebrows
+    mouth_corner_left = mouth[0][1]  # Left corner of the mouth
+    mouth_corner_right = mouth[6][1]  # Right corner of the mouth
 
-    left_eye_height = abs(left_eye[1][1] - left_eye[5][1])
-    right_eye_height = abs(right_eye[1][1] - right_eye[5][1])
-    avg_eye_height = (left_eye_height + right_eye_height) / 2
+    print(f"Mouth Height: {mouth_height}, Eyebrow Distance: {eyebrow_distance}, Mouth Corners: {mouth_corner_left}, {mouth_corner_right}")
 
-    # Calculate eyebrow slope
-    left_eyebrow_slope = (left_eyebrow[-1][1] - left_eyebrow[0][1]) / (left_eyebrow[-1][0] - left_eyebrow[0][0])
-    right_eyebrow_slope = (right_eyebrow[-1][1] - right_eyebrow[0][1]) / (right_eyebrow[-1][0] - right_eyebrow[0][0])
-    avg_eyebrow_slope = (left_eyebrow_slope + right_eyebrow_slope) / 2
-
-    # Print debug information
-    print(f"Mouth Ratio: {mouth_ratio:.2f}, Avg Eyebrow Height: {avg_eyebrow_height:.2f}")
-    print(f"Avg Eye Height: {avg_eye_height:.2f}, Avg Eyebrow Slope: {avg_eyebrow_slope:.2f}")
-
-    # Refined rules for emotion detection
-    if mouth_ratio > 0.3 and avg_eyebrow_height < 10:
+    # Rules for emotion detection
+    if mouth_height > 25:  # Mouth open wide
         return "Happy"
-    elif avg_eyebrow_height > 15 and avg_eye_height > 10:
+    elif left_eyebrow_height > 20 or right_eyebrow_height > 20:  # Eyebrows raised
         return "Surprise"
-    elif mouth_ratio < 0.1 and avg_eyebrow_slope < -0.1:
-        return "Sad"
-    elif avg_eyebrow_height > 12 and avg_eyebrow_slope > 0.1 and mouth_ratio < 0.2:
+    elif eyebrow_distance < 40:  # Eyebrows closer together
         return "Angry"
-    elif mouth_ratio > 0.2 and avg_eyebrow_height > 12:
-        return "Excited"
-    elif avg_eye_height < 5:
-        return "Sleepy"
-    elif mouth_ratio < 0.15 and abs(avg_eyebrow_slope) < 0.05:
-        return "Neutral"
-    elif mouth_ratio > 0.15 and mouth_ratio < 0.3 and avg_eyebrow_height < 12:
-        return "Content"
+    elif mouth_corner_left > mouth[9][1] + 10 and mouth_corner_right > mouth[9][1] + 10:  # Mouth corners drooping
+        return "Sad"
     else:
-        return "Unknown"
+        return "Neutral"
 
 def estimate_age(face):
     """
@@ -126,8 +106,8 @@ while True:
         age = estimate_age(face_roi)
 
         # Display the detected emotion and age
-        cv2.putText(frame, f"Emotion: {emotion}", (x, y-30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.putText(frame, f"Age: {age}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(frame, f"Emotion: {emotion}", (x, y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        cv2.putText(frame, f"Age: {age}", (x, y-20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
     # Display the frame
     cv2.imshow('Face Emotion & Age Detection', frame)

@@ -60,7 +60,7 @@ def detect_emotion(landmarks, face_width, face_height):
 
 def estimate_age(face):
     """
-    Estimate age using the pre-trained age model with bias correction.
+    Estimate age using the pre-trained age model with bias correction and filtering.
     """
     blob = cv2.dnn.blobFromImage(face, scalefactor=1.0, size=(227, 227), 
                                  mean=(78.4263377603, 87.7689143744, 114.895847746), 
@@ -74,11 +74,19 @@ def estimate_age(face):
     # Define the midpoint of each age range
     AGE_MIDPOINTS = [1, 5, 10, 17, 28, 40, 50, 80]
 
-    # Apply bias correction for adult ages
+    # Apply stronger bias correction for adult ages
     corrected_preds = age_preds.copy()
-    corrected_preds[4:] *= 1.5  # Increase weights for older age ranges
+    corrected_preds[4:] *= 2.0  # Increase weights for older age ranges
 
     # Normalize the corrected predictions
+    corrected_preds /= np.sum(corrected_preds)
+
+    # Filter out unrealistic predictions for adult faces
+    face_height, face_width = face.shape[:2]
+    if face_height > 100 or face_width > 100:  # Larger faces are likely adults
+        corrected_preds[:4] = 0  # Ignore predictions for very young age ranges
+
+    # Normalize again after filtering
     corrected_preds /= np.sum(corrected_preds)
 
     # Calculate the weighted average age

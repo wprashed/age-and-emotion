@@ -1,31 +1,18 @@
 import cv2
-import dlib
 import numpy as np
+import dlib
 
-# Load OpenCV's pre-trained face detector
+# Load pre-trained models
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-
-# Load dlib's pre-trained facial landmark detector
-try:
-    predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
-except Exception as e:
-    print(f"Error loading dlib shape predictor: {e}")
-    print("Please download the file from http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2 and extract it.")
-    exit()
-
-# Load pre-trained age model
+predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 age_net = cv2.dnn.readNetFromCaffe("deploy_age.prototxt", "age_net.caffemodel")
 
-# Define refined age labels
-AGE_LABELS = [
-    '(0-2)', '(3-5)', '(6-8)', '(9-11)', '(12-14)', 
-    '(15-17)', '(18-20)', '(21-23)', '(24-26)', '(27-29)', 
-    '(30-32)', '(33-35)', '(36-38)', '(39-41)', '(42-44)', 
-    '(45-47)', '(48-50)', '(51-53)', '(54-56)', '(57-59)', 
-    '(60-62)', '(63-65)', '(66-68)', '(69-71)', '(72-74)', 
-    '(75-77)', '(78-80)', '(81-83)', '(84-86)', '(87-89)', 
-    '(90-100)'
-]
+# Define emotion labels
+EMOTIONS = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
+
+# Update the AGE_LABELS and add AGE_RANGES
+AGE_LABELS = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+AGE_RANGES = [(0, 2), (4, 6), (8, 12), (15, 20), (25, 32), (38, 43), (48, 53), (60, 100)]
 
 def detect_emotion(landmarks, face_width, face_height):
     """
@@ -45,11 +32,9 @@ def detect_emotion(landmarks, face_width, face_height):
     mouth_width = normalize(abs(mouth[6][0] - mouth[0][0]))
     mouth_height = normalize(abs(mouth[3][1] - mouth[9][1]))
     mouth_ratio = mouth_height / mouth_width if mouth_width > 0 else 0
-
     left_eyebrow_height = normalize(abs(left_eyebrow[2][1] - left_eye[1][1]))
     right_eyebrow_height = normalize(abs(right_eyebrow[2][1] - right_eye[1][1]))
     avg_eyebrow_height = (left_eyebrow_height + right_eyebrow_height) / 2
-
     left_eye_height = normalize(abs(left_eye[1][1] - left_eye[5][1]))
     right_eye_height = normalize(abs(right_eye[1][1] - right_eye[5][1]))
     avg_eye_height = (left_eye_height + right_eye_height) / 2
@@ -57,33 +42,59 @@ def detect_emotion(landmarks, face_width, face_height):
     # Print debug information
     print(f"Mouth Ratio: {mouth_ratio:.3f}, Avg Eyebrow Height: {avg_eyebrow_height:.3f}, Avg Eye Height: {avg_eye_height:.3f}")
 
-    # Simplified rules for emotion detection
-    if mouth_ratio > 0.2:
-        return "Happy"
-    elif avg_eyebrow_height > 0.1:
-        return "Surprised"
-    elif mouth_ratio < 0.05 and avg_eyebrow_height < 0.05:
-        return "Sad"
-    elif avg_eyebrow_height > 0.08 and mouth_ratio < 0.1:
-        return "Angry"
-    elif avg_eye_height < 0.02:
-        return "Sleepy"
+    # Add better rules for emotion detection
+    if mouth_ratio > 0.3:  # Wide-open mouth
+        return "happy"
+    elif avg_eyebrow_height > 0.15 and mouth_ratio < 0.05:  # Raised eyebrows
+        return "surprise"
+    elif avg_eyebrow_height < 0.05 and mouth_ratio < 0.05:  # Drooping eyebrows and closed mouth
+        return "sad"
+    elif avg_eyebrow_height > 0.1 and avg_eye_height < 0.05:  # Lowered eyebrows and squinting eyes
+        return "angry"
+    elif avg_eye_height < 0.02:  # Closed eyes
+        return "sleepy"
+    elif mouth_ratio < 0.1 and avg_eyebrow_height < 0.08:  # Neutral expression
+        return "neutral"
     else:
-        return "Neutral"
+        return "unknown"
 
 def estimate_age(face):
     """
-    Estimate age using the pre-trained age model.
+    Estimate age using the pre-trained age model with bias correction.
     """
-    blob = cv2.dnn.blobFromImage(face, scalefactor=1.0, size=(227, 227), mean=(78.4263377603, 87.7689143744, 114.895847746), swapRB=False)
+    blob = cv2.dnn.blobFromImage(face, scalefactor=1.0, size=(227, 227), 
+                                 mean=(78.4263377603, 87.7689143744, 114.895847746), 
+                                 swapRB=False)
     age_net.setInput(blob)
-    age_preds = age_net.forward()
+    age_preds = age_net.forward().flatten()
 
-    # Find the age range with the highest probability
-    age_index = age_preds[0].argmax()
-    age_range = AGE_LABELS[age_index]
+    # Print raw predictions
+    print(f"Raw Age Predictions: {age_preds}")
 
-    return age_range
+    # Define the midpoint of each age range
+    AGE_MIDPOINTS = [1, 5, 10, 17, 28, 40, 50, 80]
+
+    # Apply bias correction for adult ages
+    corrected_preds = age_preds.copy()
+    corrected_preds[4:] *= 1.5  # Increase weights for older age ranges
+
+    # Normalize the corrected predictions
+    corrected_preds /= np.sum(corrected_preds)
+
+    # Calculate the weighted average age
+    total_pred = np.sum(corrected_preds)
+    weighted_sum = sum(pred * mid for pred, mid in zip(corrected_preds, AGE_MIDPOINTS))
+    estimated_age = int(weighted_sum / total_pred)
+
+    # Print intermediate values
+    print(f"Corrected Predictions: {corrected_preds}")
+    print(f"Weighted Sum: {weighted_sum}, Total Pred: {total_pred}, Estimated Age: {estimated_age}")
+
+    # Find the closest age range
+    closest_range = min(AGE_RANGES, key=lambda x: abs((x[0] + x[1]) / 2 - estimated_age))
+    age_index = AGE_RANGES.index(closest_range)
+
+    return f"{AGE_LABELS[age_index]} (Est: {estimated_age})"
 
 # Start video capture
 cap = cv2.VideoCapture(0)
@@ -122,7 +133,7 @@ while True:
             landmarks = [(landmarks.part(i).x, landmarks.part(i).y) for i in range(68)]
             emotion = detect_emotion(landmarks, w, h)  # Pass face width and height
         except Exception as e:
-            emotion = "Unknown"
+            emotion = "unknown"
             print(f"Error detecting landmarks: {e}")
 
         # Estimate age

@@ -195,6 +195,7 @@ logging.info("Camera opened successfully. Press 'q' to quit.")
 # Load known faces at startup
 load_known_faces()
 
+# Generate Report
 def generate_report():
     """
     Generate a CSV and PDF report from the detection log.

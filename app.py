@@ -1,5 +1,6 @@
 import cv2
 import dlib
+import numpy as np
 
 # Load OpenCV's pre-trained face detector
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -26,43 +27,47 @@ AGE_LABELS = [
     '(90-100)'
 ]
 
-# Define the midpoint of each age range
-AGE_MIDPOINTS = [
-    1, 5, 7, 10, 13, 16, 19, 22, 25, 28, 
-    31, 34, 37, 40, 43, 46, 49, 52, 55, 58, 
-    61, 64, 67, 70, 73, 76, 79, 82, 85, 88, 95
-]
-
-def detect_emotion(landmarks):
+def detect_emotion(landmarks, face_width, face_height):
     """
     Rule-based emotion detection using facial landmarks.
     """
-    # Extract key points for mouth, eyebrows, and eyes
+    # Extract key points for different facial features
     mouth = landmarks[48:68]  # Mouth landmarks
-    left_eye = landmarks[36:42]  # Left eye landmarks
-    right_eye = landmarks[42:48]  # Right eye landmarks
     left_eyebrow = landmarks[17:22]  # Left eyebrow landmarks
     right_eyebrow = landmarks[22:27]  # Right eyebrow landmarks
+    left_eye = landmarks[36:42]  # Left eye landmarks
+    right_eye = landmarks[42:48]  # Right eye landmarks
 
-    # Calculate distances between key points
-    mouth_height = abs(mouth[3][1] - mouth[9][1])  # Vertical distance of the mouth
-    left_eyebrow_height = abs(left_eyebrow[0][1] - left_eyebrow[-1][1])
-    right_eyebrow_height = abs(right_eyebrow[0][1] - right_eyebrow[-1][1])
-    eyebrow_distance = abs(left_eyebrow[-1][0] - right_eyebrow[0][0])  # Horizontal distance between eyebrows
-    mouth_corner_left = mouth[0][1]  # Left corner of the mouth
-    mouth_corner_right = mouth[6][1]  # Right corner of the mouth
+    # Normalize measurements based on face size
+    normalize = lambda x: x / face_width
 
-    print(f"Mouth Height: {mouth_height}, Eyebrow Distance: {eyebrow_distance}, Mouth Corners: {mouth_corner_left}, {mouth_corner_right}")
+    # Calculate distances and ratios
+    mouth_width = normalize(abs(mouth[6][0] - mouth[0][0]))
+    mouth_height = normalize(abs(mouth[3][1] - mouth[9][1]))
+    mouth_ratio = mouth_height / mouth_width if mouth_width > 0 else 0
 
-    # Rules for emotion detection
-    if mouth_height > 25:  # Mouth open wide
+    left_eyebrow_height = normalize(abs(left_eyebrow[2][1] - left_eye[1][1]))
+    right_eyebrow_height = normalize(abs(right_eyebrow[2][1] - right_eye[1][1]))
+    avg_eyebrow_height = (left_eyebrow_height + right_eyebrow_height) / 2
+
+    left_eye_height = normalize(abs(left_eye[1][1] - left_eye[5][1]))
+    right_eye_height = normalize(abs(right_eye[1][1] - right_eye[5][1]))
+    avg_eye_height = (left_eye_height + right_eye_height) / 2
+
+    # Print debug information
+    print(f"Mouth Ratio: {mouth_ratio:.3f}, Avg Eyebrow Height: {avg_eyebrow_height:.3f}, Avg Eye Height: {avg_eye_height:.3f}")
+
+    # Simplified rules for emotion detection
+    if mouth_ratio > 0.2:
         return "Happy"
-    elif left_eyebrow_height > 20 or right_eyebrow_height > 20:  # Eyebrows raised
-        return "Surprise"
-    elif eyebrow_distance < 40:  # Eyebrows closer together
-        return "Angry"
-    elif mouth_corner_left > mouth[9][1] + 10 and mouth_corner_right > mouth[9][1] + 10:  # Mouth corners drooping
+    elif avg_eyebrow_height > 0.1:
+        return "Surprised"
+    elif mouth_ratio < 0.05 and avg_eyebrow_height < 0.05:
         return "Sad"
+    elif avg_eyebrow_height > 0.08 and mouth_ratio < 0.1:
+        return "Angry"
+    elif avg_eye_height < 0.02:
+        return "Sleepy"
     else:
         return "Neutral"
 
@@ -74,12 +79,11 @@ def estimate_age(face):
     age_net.setInput(blob)
     age_preds = age_net.forward()
 
-    # Calculate the weighted average age
-    weighted_age = sum(prob * mid for prob, mid in zip(age_preds[0], AGE_MIDPOINTS))
-    total_prob = sum(age_preds[0])
-    estimated_age = int(weighted_age / total_prob)
+    # Find the age range with the highest probability
+    age_index = age_preds[0].argmax()
+    age_range = AGE_LABELS[age_index]
 
-    return str(estimated_age)
+    return age_range
 
 # Start video capture
 cap = cv2.VideoCapture(0)
@@ -100,7 +104,7 @@ while True:
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # Detect faces using Haar Cascade
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=3)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
     if len(faces) == 0:
         print("No faces detected.")
@@ -116,7 +120,7 @@ while True:
             rect = dlib.rectangle(x, y, x+w, y+h)
             landmarks = predictor(gray, rect)
             landmarks = [(landmarks.part(i).x, landmarks.part(i).y) for i in range(68)]
-            emotion = detect_emotion(landmarks)
+            emotion = detect_emotion(landmarks, w, h)  # Pass face width and height
         except Exception as e:
             emotion = "Unknown"
             print(f"Error detecting landmarks: {e}")

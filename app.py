@@ -1,6 +1,17 @@
 import cv2
 import numpy as np
 import dlib
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(message)s",
+    handlers=[
+        logging.FileHandler("detection_log.txt"),  # Write logs to a file
+        logging.StreamHandler()  # Print logs to the console
+    ]
+)
 
 # Load pre-trained models
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
@@ -39,9 +50,6 @@ def detect_emotion(landmarks, face_width, face_height):
     right_eye_height = normalize(abs(right_eye[1][1] - right_eye[5][1]))
     avg_eye_height = (left_eye_height + right_eye_height) / 2
 
-    # Print debug information
-    print(f"Mouth Ratio: {mouth_ratio:.3f}, Avg Eyebrow Height: {avg_eyebrow_height:.3f}, Avg Eye Height: {avg_eye_height:.3f}")
-
     # Add better rules for emotion detection
     if mouth_ratio > 0.35:  # Wide-open mouth
         return "happy"
@@ -60,7 +68,7 @@ def detect_emotion(landmarks, face_width, face_height):
 
 def estimate_age(face):
     """
-    Estimate age using the pre-trained age model with bias correction and filtering.
+    Improved age estimation with bias correction and face size filtering.
     """
     blob = cv2.dnn.blobFromImage(face, scalefactor=1.0, size=(227, 227), 
                                  mean=(78.4263377603, 87.7689143744, 114.895847746), 
@@ -68,15 +76,12 @@ def estimate_age(face):
     age_net.setInput(blob)
     age_preds = age_net.forward().flatten()
 
-    # Print raw predictions
-    print(f"Raw Age Predictions: {age_preds}")
-
     # Define the midpoint of each age range
     AGE_MIDPOINTS = [1, 5, 10, 17, 28, 40, 50, 80]
 
     # Apply stronger bias correction for adult ages
     corrected_preds = age_preds.copy()
-    corrected_preds[4:] *= 2.0  # Increase weights for older age ranges
+    corrected_preds[4:] *= 2.5  # Increase weights for older age ranges significantly
 
     # Normalize the corrected predictions
     corrected_preds /= np.sum(corrected_preds)
@@ -94,9 +99,10 @@ def estimate_age(face):
     weighted_sum = sum(pred * mid for pred, mid in zip(corrected_preds, AGE_MIDPOINTS))
     estimated_age = int(weighted_sum / total_pred)
 
-    # Print intermediate values
-    print(f"Corrected Predictions: {corrected_preds}")
-    print(f"Weighted Sum: {weighted_sum}, Total Pred: {total_pred}, Estimated Age: {estimated_age}")
+    # Smooth the age prediction over multiple frames
+    global smoothed_age
+    smoothed_age = 0.8 * smoothed_age + 0.2 * estimated_age if 'smoothed_age' in globals() else estimated_age
+    estimated_age = int(smoothed_age)
 
     # Find the closest age range
     closest_range = min(AGE_RANGES, key=lambda x: abs((x[0] + x[1]) / 2 - estimated_age))
@@ -108,15 +114,15 @@ def estimate_age(face):
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
-    print("Error: Could not open camera.")
+    logging.error("Error: Could not open camera.")
     exit()
 
-print("Camera opened successfully. Press 'q' to quit.")
+logging.info("Camera opened successfully. Press 'q' to quit.")
 
 while True:
     ret, frame = cap.read()
     if not ret:
-        print("Error: Failed to capture frame. Retrying...")
+        logging.warning("Error: Failed to capture frame. Retrying...")
         continue
 
     # Convert frame to grayscale
@@ -126,9 +132,9 @@ while True:
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
     if len(faces) == 0:
-        print("No faces detected.")
+        logging.info("No faces detected.")
     else:
-        print(f"{len(faces)} face(s) detected.")
+        logging.info(f"{len(faces)} face(s) detected.")
 
     for (x, y, w, h) in faces:
         # Draw rectangle around the face
@@ -142,11 +148,14 @@ while True:
             emotion = detect_emotion(landmarks, w, h)  # Pass face width and height
         except Exception as e:
             emotion = "unknown"
-            print(f"Error detecting landmarks: {e}")
+            logging.error(f"Error detecting landmarks: {e}")
 
         # Estimate age
         face_roi = frame[y:y+h, x:x+w]
         age = estimate_age(face_roi)
+
+        # Log the detection
+        logging.info(f"Emotion: {emotion}, Age: {age}, Face Coordinates: (x={x}, y={y}, w={w}, h={h})")
 
         # Display the detected emotion and age
         cv2.putText(frame, f"Emotion: {emotion}", (x, y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
@@ -162,3 +171,4 @@ while True:
 # Release resources
 cap.release()
 cv2.destroyAllWindows()
+logging.info("Application terminated.")

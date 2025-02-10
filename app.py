@@ -16,7 +16,7 @@ AGE_RANGES = [(0, 2), (4, 6), (8, 12), (15, 20), (25, 32), (38, 43), (48, 53), (
 
 def detect_emotion(landmarks, face_width, face_height):
     """
-    Rule-based emotion detection using facial landmarks.
+    Improved rule-based emotion detection using facial landmarks.
     """
     # Extract key points for different facial features
     mouth = landmarks[48:68]  # Mouth landmarks
@@ -43,13 +43,13 @@ def detect_emotion(landmarks, face_width, face_height):
     print(f"Mouth Ratio: {mouth_ratio:.3f}, Avg Eyebrow Height: {avg_eyebrow_height:.3f}, Avg Eye Height: {avg_eye_height:.3f}")
 
     # Add better rules for emotion detection
-    if mouth_ratio > 0.3:  # Wide-open mouth
+    if mouth_ratio > 0.35:  # Wide-open mouth
         return "happy"
-    elif avg_eyebrow_height > 0.15 and mouth_ratio < 0.05:  # Raised eyebrows
+    elif avg_eyebrow_height > 0.18 and mouth_ratio < 0.05:  # Raised eyebrows
         return "surprise"
-    elif avg_eyebrow_height < 0.05 and mouth_ratio < 0.05:  # Drooping eyebrows and closed mouth
+    elif avg_eyebrow_height < 0.06 and mouth_ratio < 0.05:  # Drooping eyebrows and closed mouth
         return "sad"
-    elif avg_eyebrow_height > 0.1 and avg_eye_height < 0.05:  # Lowered eyebrows and squinting eyes
+    elif avg_eyebrow_height > 0.12 and avg_eye_height < 0.05:  # Lowered eyebrows and squinting eyes
         return "angry"
     elif avg_eye_height < 0.02:  # Closed eyes
         return "sleepy"

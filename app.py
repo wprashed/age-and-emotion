@@ -15,8 +15,23 @@ except Exception as e:
 # Load pre-trained age model
 age_net = cv2.dnn.readNetFromCaffe("deploy_age.prototxt", "age_net.caffemodel")
 
-# Define age labels
-AGE_LABELS = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
+# Define refined age labels
+AGE_LABELS = [
+    '(0-2)', '(3-5)', '(6-8)', '(9-11)', '(12-14)', 
+    '(15-17)', '(18-20)', '(21-23)', '(24-26)', '(27-29)', 
+    '(30-32)', '(33-35)', '(36-38)', '(39-41)', '(42-44)', 
+    '(45-47)', '(48-50)', '(51-53)', '(54-56)', '(57-59)', 
+    '(60-62)', '(63-65)', '(66-68)', '(69-71)', '(72-74)', 
+    '(75-77)', '(78-80)', '(81-83)', '(84-86)', '(87-89)', 
+    '(90-100)'
+]
+
+# Define the midpoint of each age range
+AGE_MIDPOINTS = [
+    1, 5, 7, 10, 13, 16, 19, 22, 25, 28, 
+    31, 34, 37, 40, 43, 46, 49, 52, 55, 58, 
+    61, 64, 67, 70, 73, 76, 79, 82, 85, 88, 95
+]
 
 def detect_emotion(landmarks):
     """
@@ -58,8 +73,13 @@ def estimate_age(face):
     blob = cv2.dnn.blobFromImage(face, scalefactor=1.0, size=(227, 227), mean=(78.4263377603, 87.7689143744, 114.895847746), swapRB=False)
     age_net.setInput(blob)
     age_preds = age_net.forward()
-    age = AGE_LABELS[age_preds[0].argmax()]
-    return age
+
+    # Calculate the weighted average age
+    weighted_age = sum(prob * mid for prob, mid in zip(age_preds[0], AGE_MIDPOINTS))
+    total_prob = sum(age_preds[0])
+    estimated_age = int(weighted_age / total_prob)
+
+    return str(estimated_age)
 
 # Start video capture
 cap = cv2.VideoCapture(0)

@@ -4,6 +4,8 @@ import dlib
 import face_recognition
 import os
 import logging
+import pandas as pd
+from fpdf import FPDF
 from datetime import datetime
 
 # Configure logging
@@ -140,12 +142,28 @@ def estimate_age(face):
 
 def save_new_face(frame, face_location):
     """
-    Save a new face image and ask for the user's name.
+    Save a new face image and ask for the user's name only if the face is not already known.
     """
     top, right, bottom, left = face_location
     face_image = frame[top:bottom, left:right]
 
-    # Ask for the user's name
+    # Encode the detected face
+    face_encoding = face_recognition.face_encodings(face_image)
+    if not face_encoding:
+        logging.warning("Could not encode face. Skipping saving.")
+        return None
+
+    face_encoding = face_encoding[0]
+
+    # Check if the face is already known
+    matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.5)
+    if True in matches:
+        match_index = matches.index(True)
+        name = known_face_names[match_index]
+        logging.info(f"Face already known as {name}. Skipping saving.")
+        return name
+
+    # Ask for the user's name (only if the face is new)
     name = input("Enter the name of the person: ").strip()
     if not name:
         logging.warning("No name provided. Skipping face saving.")
@@ -177,6 +195,95 @@ logging.info("Camera opened successfully. Press 'q' to quit.")
 # Load known faces at startup
 load_known_faces()
 
+def generate_report():
+    """
+    Generate a CSV and PDF report from the detection log.
+    """
+    report = {}
+
+    # Read the log file
+    try:
+        with open("logs/detection_log.txt", "r") as file:
+            lines = file.readlines()
+    except FileNotFoundError:
+        logging.error("Detection log file not found. Cannot generate report.")
+        return
+
+    # Parse each line in the log
+    for line in lines:
+        if "Name:" in line and "Emotion:" in line and "Age:" in line:
+            parts = line.split(",")
+            timestamp = parts[0].strip()  # Extract timestamp
+            name = parts[1].split(":")[1].strip()  # Extract name
+            emotion = parts[2].split(":")[1].strip()  # Extract emotion
+            age = parts[3].split(":")[1].strip()  # Extract age
+
+            # Initialize user entry in the report
+            if name not in report:
+                report[name] = {"emotions": {}, "ages": []}
+
+            # Count emotions
+            if emotion not in report[name]["emotions"]:
+                report[name]["emotions"][emotion] = 0
+            report[name]["emotions"][emotion] += 1
+
+            # Extract numeric age (e.g., "Est: 28" -> 28)
+            try:
+                est_age = age.split("(Est:")[1].strip().strip(")")
+                age_value = int(est_age)
+            except (IndexError, ValueError):
+                logging.warning(f"Could not parse age from: {age}")
+                continue
+
+            # Collect ages
+            report[name]["ages"].append(age_value)
+
+    # Generate CSV Report
+    csv_data = []
+    for name, data in report.items():
+        avg_age = sum(data["ages"]) / len(data["ages"]) if data["ages"] else 0
+        for emotion, count in data["emotions"].items():
+            csv_data.append({
+                "User": name,
+                "Emotion": emotion,
+                "Count": count,
+                "Average Age": avg_age,
+                "All Ages": ", ".join(map(str, data["ages"]))
+            })
+
+    df = pd.DataFrame(csv_data)
+    csv_file = "logs/report.csv"
+    df.to_csv(csv_file, index=False)
+    logging.info(f"CSV report generated: {csv_file}")
+
+    # Generate PDF Report
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font("Arial", size=12)
+
+    pdf.cell(200, 10, txt="--- Detection Report ---", ln=True, align="C")
+    pdf.ln(10)
+
+    for name, data in report.items():
+        avg_age = sum(data["ages"]) / len(data["ages"]) if data["ages"] else 0
+        pdf.cell(200, 10, txt=f"User: {name}", ln=True)
+        pdf.cell(200, 10, txt="Emotions:", ln=True)
+        for emotion, count in data["emotions"].items():
+            pdf.cell(200, 10, txt=f"  - {emotion}: {count} times", ln=True)
+        pdf.cell(200, 10, txt=f"Ages:", ln=True)
+        pdf.cell(200, 10, txt=f"  - Average Age: {avg_age:.1f}", ln=True)
+        pdf.cell(200, 10, txt=f"  - All Ages: {', '.join(map(str, data['ages']))}", ln=True)
+        pdf.ln(10)
+
+    pdf_file = "logs/report.pdf"
+    pdf.output(pdf_file)
+    logging.info(f"PDF report generated: {pdf_file}")
+
+    print("\n--- Reports Generated ---")
+    print(f"CSV Report: {csv_file}")
+    print(f"PDF Report: {pdf_file}")
+
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -207,7 +314,9 @@ while True:
             continue
 
         face_encoding = face_encoding[0]
-        matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+
+        # Compare faces with a tolerance threshold
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding, tolerance=0.5)
         name = "Unknown"
 
         if True in matches:
@@ -244,8 +353,11 @@ while True:
     cv2.imshow('Face Emotion & Age Detection', frame)
 
     # Exit on 'q' key press
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
         break
+    elif key == ord('r'):  # Press 'r' to generate a report
+        generate_report()
 
 # Release resources
 cap.release()

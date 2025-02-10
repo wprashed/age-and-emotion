@@ -1,14 +1,17 @@
 import cv2
 import numpy as np
 import dlib
+import face_recognition
+import os
 import logging
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(message)s",
     handlers=[
-        logging.FileHandler("detection_log.txt"),  # Write logs to a file
+        logging.FileHandler("logs/detection_log.txt"),  # Write logs to a file
         logging.StreamHandler()  # Print logs to the console
     ]
 )
@@ -24,6 +27,31 @@ EMOTIONS = ["angry", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
 # Update the AGE_LABELS and add AGE_RANGES
 AGE_LABELS = ['(0-2)', '(4-6)', '(8-12)', '(15-20)', '(25-32)', '(38-43)', '(48-53)', '(60-100)']
 AGE_RANGES = [(0, 2), (4, 6), (8, 12), (15, 20), (25, 32), (38, 43), (48, 53), (60, 100)]
+
+# Load known faces and their encodings
+known_face_encodings = []
+known_face_names = []
+
+def load_known_faces():
+    """
+    Load known face images and their encodings from the 'known_faces' directory.
+    """
+    global known_face_encodings, known_face_names
+    known_face_encodings = []
+    known_face_names = []
+
+    for name in os.listdir("known_faces"):
+        person_dir = os.path.join("known_faces", name)
+        if os.path.isdir(person_dir):
+            for filename in os.listdir(person_dir):
+                image_path = os.path.join(person_dir, filename)
+                try:
+                    image = face_recognition.load_image_file(image_path)
+                    encoding = face_recognition.face_encodings(image)[0]
+                    known_face_encodings.append(encoding)
+                    known_face_names.append(name)
+                except Exception as e:
+                    logging.error(f"Error loading face encoding for {image_path}: {e}")
 
 def detect_emotion(landmarks, face_width, face_height):
     """
@@ -110,6 +138,33 @@ def estimate_age(face):
 
     return f"{AGE_LABELS[age_index]} (Est: {estimated_age})"
 
+def save_new_face(frame, face_location):
+    """
+    Save a new face image and ask for the user's name.
+    """
+    top, right, bottom, left = face_location
+    face_image = frame[top:bottom, left:right]
+
+    # Ask for the user's name
+    name = input("Enter the name of the person: ").strip()
+    if not name:
+        logging.warning("No name provided. Skipping face saving.")
+        return None
+
+    # Create a directory for the user if it doesn't exist
+    user_dir = os.path.join("known_faces", name)
+    os.makedirs(user_dir, exist_ok=True)
+
+    # Save the face image
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    image_path = os.path.join(user_dir, f"{name}_{timestamp}.jpg")
+    cv2.imwrite(image_path, face_image)
+    logging.info(f"Saved new face image: {image_path}")
+
+    # Reload known faces
+    load_known_faces()
+    return name
+
 # Start video capture
 cap = cv2.VideoCapture(0)
 
@@ -118,6 +173,9 @@ if not cap.isOpened():
     exit()
 
 logging.info("Camera opened successfully. Press 'q' to quit.")
+
+# Load known faces at startup
+load_known_faces()
 
 while True:
     ret, frame = cap.read()
@@ -140,6 +198,26 @@ while True:
         # Draw rectangle around the face
         cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 0, 0), 2)
 
+        # Recognize the face
+        face_location = (y, x+w, y+h, x)
+        face_encoding = face_recognition.face_encodings(frame, [face_location])
+
+        if not face_encoding:
+            logging.warning("Could not encode face. Skipping recognition.")
+            continue
+
+        face_encoding = face_encoding[0]
+        matches = face_recognition.compare_faces(known_face_encodings, face_encoding)
+        name = "Unknown"
+
+        if True in matches:
+            match_index = matches.index(True)
+            name = known_face_names[match_index]
+        else:
+            # New face detected
+            logging.info("New face detected. Saving image and asking for name.")
+            name = save_new_face(frame, face_location)
+
         # Detect facial landmarks using dlib
         try:
             rect = dlib.rectangle(x, y, x+w, y+h)
@@ -155,9 +233,10 @@ while True:
         age = estimate_age(face_roi)
 
         # Log the detection
-        logging.info(f"Emotion: {emotion}, Age: {age}, Face Coordinates: (x={x}, y={y}, w={w}, h={h})")
+        logging.info(f"Name: {name}, Emotion: {emotion}, Age: {age}")
 
-        # Display the detected emotion and age
+        # Display the detected information
+        cv2.putText(frame, f"Name: {name}", (x, y-70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         cv2.putText(frame, f"Emotion: {emotion}", (x, y-50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         cv2.putText(frame, f"Age: {age}", (x, y-20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
